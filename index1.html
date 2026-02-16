@@ -1,0 +1,1002 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Adventure Learning Quest</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        body {
+            font-family: 'Comic Sans MS', 'Arial', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            overflow: hidden;
+            touch-action: none;
+        }
+        
+        #gameCanvas {
+            display: block;
+            margin: 0 auto;
+            background: #fff;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            cursor: pointer;
+        }
+        
+        .ui-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 15px;
+            background: rgba(102, 126, 234, 0.95);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 100;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+        }
+        
+        .stat-badge {
+            background: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 1.2em;
+            color: #667eea;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        
+        .star {
+            color: #ffd700;
+            font-size: 1.5em;
+            margin: 0 3px;
+        }
+        
+        @media (max-width: 768px) {
+            .ui-overlay {
+                padding: 10px;
+            }
+            
+            .stat-badge {
+                padding: 8px 15px;
+                font-size: 1em;
+            }
+            
+            .star {
+                font-size: 1.2em;
+            }
+        }
+        
+        .loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            color: white;
+        }
+        
+        .loading-title {
+            font-size: 3em;
+            margin-bottom: 30px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        
+        .loading-bar {
+            width: 300px;
+            height: 30px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 15px;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+        
+        .loading-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00ff88, #00d4ff);
+            width: 0%;
+            transition: width 0.3s;
+        }
+        
+        @media (max-width: 768px) {
+            .loading-title {
+                font-size: 2em;
+            }
+            
+            .loading-bar {
+                width: 80%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="loading-screen" id="loadingScreen">
+        <div class="loading-title">🎮 Adventure Learning Quest 🌟</div>
+        <div class="loading-bar">
+            <div class="loading-fill" id="loadingFill"></div>
+        </div>
+        <div style="font-size: 1.2em;">Loading fun games...</div>
+    </div>
+    
+    <div class="ui-overlay">
+        <div class="stat-badge">
+            <span id="scoreDisplay">Score: 0</span>
+        </div>
+        <div class="stat-badge">
+            <span id="starsDisplay"></span>
+        </div>
+        <div class="stat-badge">
+            <span id="levelDisplay">Level 1</span>
+        </div>
+    </div>
+    
+    <canvas id="gameCanvas"></canvas>
+    
+    <script>
+        // ==================== GAME CONFIGURATION ====================
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Declare game variables first
+        let currentGame = null;
+        let showingTransition = false;
+        let transitionAlpha = 0;
+        let transitionMessage = '';
+        let transitionColor = '';
+        
+        // Responsive canvas sizing
+        function resizeCanvas() {
+            const maxWidth = window.innerWidth;
+            const maxHeight = window.innerHeight - 60; // Account for UI overlay
+            const aspectRatio = 16 / 9;
+            
+            if (maxWidth / maxHeight > aspectRatio) {
+                canvas.height = maxHeight;
+                canvas.width = maxHeight * aspectRatio;
+            } else {
+                canvas.width = maxWidth;
+                canvas.height = maxWidth / aspectRatio;
+            }
+            
+            if (currentGame && currentGame.resize) {
+                currentGame.resize();
+            }
+        }
+        
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+        
+        // ==================== AUDIO SYSTEM ====================
+        let audioContext;
+        let musicOscillators = [];
+        
+        function initAudio() {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            startBackgroundMusic();
+        }
+        
+        function startBackgroundMusic() {
+            // Calming background music for ADHD focus
+            const frequencies = [261.63, 329.63, 392.00, 523.25]; // C major chord
+            
+            frequencies.forEach((freq, i) => {
+                const osc = audioContext.createOscillator();
+                const gain = audioContext.createGain();
+                
+                osc.frequency.value = freq;
+                osc.type = 'sine';
+                gain.gain.value = 0.02;
+                
+                osc.connect(gain);
+                gain.connect(audioContext.destination);
+                osc.start();
+                
+                musicOscillators.push(osc);
+            });
+        }
+        
+        function playSound(frequency, duration = 0.2) {
+            if (!audioContext) return;
+            
+            const osc = audioContext.createOscillator();
+            const gain = audioContext.createGain();
+            
+            osc.connect(gain);
+            gain.connect(audioContext.destination);
+            
+            osc.frequency.value = frequency;
+            osc.type = 'sine';
+            gain.gain.value = 0.3;
+            
+            osc.start();
+            gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
+            osc.stop(audioContext.currentTime + duration);
+        }
+        
+        // ==================== GAME STATE ====================
+        let gameState = {
+            score: 0,
+            stars: 0,
+            level: 1,
+            currentMiniGame: 0,
+            miniGamesCompleted: 0
+        };
+        
+        function updateUI() {
+            document.getElementById('scoreDisplay').textContent = `Score: ${gameState.score}`;
+            document.getElementById('levelDisplay').textContent = `Level ${gameState.level}`;
+            
+            let starsHTML = '';
+            for (let i = 0; i < gameState.stars; i++) {
+                starsHTML += '<span class="star">⭐</span>';
+            }
+            document.getElementById('starsDisplay').innerHTML = starsHTML || 'Collect stars!';
+        }
+        
+        // ==================== PARTICLE SYSTEM ====================
+        class Particle {
+            constructor(x, y, color, size = 5) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 8;
+                this.vy = (Math.random() - 0.5) * 8 - 2;
+                this.life = 1;
+                this.color = color;
+                this.size = size;
+            }
+            
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += 0.2; // gravity
+                this.life -= 0.02;
+            }
+            
+            draw(ctx) {
+                ctx.save();
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+        
+        let particles = [];
+        
+        function createExplosion(x, y, color, count = 20) {
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+        
+        function updateParticles() {
+            particles = particles.filter(p => p.life > 0);
+            particles.forEach(p => {
+                p.update();
+                p.draw(ctx);
+            });
+        }
+        
+        // ==================== MINI-GAME 1: COLOR MATCH ====================
+        class ColorMatchGame {
+            constructor() {
+                this.colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8', '#F7DC6F'];
+                this.colorNames = ['Red', 'Cyan', 'Blue', 'Orange', 'Green', 'Yellow'];
+                this.targetColor = 0;
+                this.options = [];
+                this.score = 0;
+                this.timeLeft = 30;
+                this.lastTime = Date.now();
+                this.state = 'playing';
+                this.generateRound();
+                this.resize();
+            }
+            
+            resize() {
+                this.boxSize = Math.min(canvas.width, canvas.height) * 0.15;
+                this.spacing = this.boxSize * 0.3;
+            }
+            
+            generateRound() {
+                this.targetColor = Math.floor(Math.random() * this.colors.length);
+                this.options = [this.targetColor];
+                
+                while (this.options.length < 4) {
+                    const randColor = Math.floor(Math.random() * this.colors.length);
+                    if (!this.options.includes(randColor)) {
+                        this.options.push(randColor);
+                    }
+                }
+                
+                // Shuffle options
+                for (let i = this.options.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [this.options[i], this.options[j]] = [this.options[j], this.options[i]];
+                }
+            }
+            
+            update() {
+                if (this.state !== 'playing') return;
+                
+                const now = Date.now();
+                const delta = (now - this.lastTime) / 1000;
+                this.lastTime = now;
+                
+                this.timeLeft -= delta;
+                if (this.timeLeft <= 0) {
+                    this.state = 'complete';
+                }
+            }
+            
+            draw() {
+                // Background
+                ctx.fillStyle = '#f0f0f0';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                // Title
+                ctx.fillStyle = '#333';
+                ctx.font = `bold ${canvas.width * 0.05}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.fillText('Find the Color!', canvas.width / 2, canvas.height * 0.15);
+                
+                // Target color name
+                ctx.font = `bold ${canvas.width * 0.08}px Arial`;
+                ctx.fillStyle = this.colors[this.targetColor];
+                ctx.fillText(this.colorNames[this.targetColor], canvas.width / 2, canvas.height * 0.28);
+                
+                // Color options (2x2 grid)
+                const startX = canvas.width / 2 - (this.boxSize + this.spacing / 2);
+                const startY = canvas.height * 0.4;
+                
+                for (let i = 0; i < this.options.length; i++) {
+                    const col = i % 2;
+                    const row = Math.floor(i / 2);
+                    const x = startX + col * (this.boxSize + this.spacing);
+                    const y = startY + row * (this.boxSize + this.spacing);
+                    
+                    // Shadow
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+                    ctx.fillRect(x + 5, y + 5, this.boxSize, this.boxSize);
+                    
+                    // Color box
+                    ctx.fillStyle = this.colors[this.options[i]];
+                    ctx.fillRect(x, y, this.boxSize, this.boxSize);
+                    
+                    // Border
+                    ctx.strokeStyle = '#333';
+                    ctx.lineWidth = 3;
+                    ctx.strokeRect(x, y, this.boxSize, this.boxSize);
+                }
+                
+                // Timer
+                ctx.fillStyle = this.timeLeft < 10 ? '#ff4444' : '#333';
+                ctx.font = `bold ${canvas.width * 0.04}px Arial`;
+                ctx.fillText(`Time: ${Math.ceil(this.timeLeft)}s`, canvas.width / 2, canvas.height * 0.92);
+                
+                // Score
+                ctx.fillStyle = '#333';
+                ctx.fillText(`Correct: ${this.score}`, canvas.width / 2, canvas.height * 0.97);
+            }
+            
+            handleClick(x, y) {
+                if (this.state !== 'playing') return;
+                
+                const startX = canvas.width / 2 - (this.boxSize + this.spacing / 2);
+                const startY = canvas.height * 0.4;
+                
+                for (let i = 0; i < this.options.length; i++) {
+                    const col = i % 2;
+                    const row = Math.floor(i / 2);
+                    const boxX = startX + col * (this.boxSize + this.spacing);
+                    const boxY = startY + row * (this.boxSize + this.spacing);
+                    
+                    if (x >= boxX && x <= boxX + this.boxSize &&
+                        y >= boxY && y <= boxY + this.boxSize) {
+                        
+                        if (this.options[i] === this.targetColor) {
+                            this.score++;
+                            gameState.score += 10;
+                            playSound(800);
+                            createExplosion(boxX + this.boxSize / 2, boxY + this.boxSize / 2, this.colors[this.targetColor]);
+                            updateUI();
+                            
+                            if (this.score >= 5) {
+                                this.state = 'complete';
+                                gameState.stars++;
+                            } else {
+                                this.generateRound();
+                            }
+                        } else {
+                            playSound(200);
+                            createExplosion(boxX + this.boxSize / 2, boxY + this.boxSize / 2, '#000000', 10);
+                        }
+                    }
+                }
+            }
+            
+            isComplete() {
+                return this.state === 'complete';
+            }
+            
+            getCompletionMessage() {
+                if (this.score >= 5) {
+                    return { text: 'Amazing! 🌟', color: '#4CAF50' };
+                } else if (this.score >= 3) {
+                    return { text: 'Good Job! 😊', color: '#FFA726' };
+                } else {
+                    return { text: 'Nice Try! 💪', color: '#2196F3' };
+                }
+            }
+        }
+        
+        // ==================== MINI-GAME 2: MEMORY MATCH ====================
+        class MemoryMatchGame {
+            constructor() {
+                this.emojis = ['🚗', '⚽', '🎮', '🍕', '🌟', '🎨', '🦖', '🚀'];
+                this.cards = [];
+                this.flippedCards = [];
+                this.matchedPairs = 0;
+                this.moves = 0;
+                this.canFlip = true;
+                this.state = 'playing';
+                this.timeLeft = 45;
+                this.lastTime = Date.now();
+                this.initCards();
+                this.resize();
+            }
+            
+            resize() {
+                this.cardSize = Math.min(canvas.width, canvas.height) * 0.15;
+                this.spacing = this.cardSize * 0.15;
+            }
+            
+            initCards() {
+                const pairs = this.emojis.slice(0, 6); // Use 6 pairs for 12 cards
+                const cardValues = [...pairs, ...pairs];
+                
+                // Shuffle
+                for (let i = cardValues.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [cardValues[i], cardValues[j]] = [cardValues[j], cardValues[i]];
+                }
+                
+                this.cards = cardValues.map((emoji, index) => ({
+                    emoji,
+                    flipped: false,
+                    matched: false,
+                    index
+                }));
+            }
+            
+            update() {
+                if (this.state !== 'playing') return;
+                
+                const now = Date.now();
+                const delta = (now - this.lastTime) / 1000;
+                this.lastTime = now;
+                
+                this.timeLeft -= delta;
+                if (this.timeLeft <= 0) {
+                    this.state = 'complete';
+                }
+            }
+            
+            draw() {
+                // Background
+                ctx.fillStyle = '#e8f5e9';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                // Title
+                ctx.fillStyle = '#2e7d32';
+                ctx.font = `bold ${canvas.width * 0.05}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.fillText('Memory Match!', canvas.width / 2, canvas.height * 0.1);
+                
+                // Draw cards (4x3 grid)
+                const cols = 4;
+                const rows = 3;
+                const totalWidth = cols * this.cardSize + (cols - 1) * this.spacing;
+                const totalHeight = rows * this.cardSize + (rows - 1) * this.spacing;
+                const startX = (canvas.width - totalWidth) / 2;
+                const startY = canvas.height * 0.15;
+                
+                this.cards.forEach((card, index) => {
+                    const col = index % cols;
+                    const row = Math.floor(index / cols);
+                    const x = startX + col * (this.cardSize + this.spacing);
+                    const y = startY + row * (this.cardSize + this.spacing);
+                    
+                    // Shadow
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+                    ctx.fillRect(x + 4, y + 4, this.cardSize, this.cardSize);
+                    
+                    // Card background
+                    if (card.matched) {
+                        ctx.fillStyle = '#81c784';
+                    } else if (card.flipped) {
+                        ctx.fillStyle = '#fff';
+                    } else {
+                        ctx.fillStyle = '#4caf50';
+                    }
+                    
+                    ctx.fillRect(x, y, this.cardSize, this.cardSize);
+                    
+                    // Border
+                    ctx.strokeStyle = '#2e7d32';
+                    ctx.lineWidth = 3;
+                    ctx.strokeRect(x, y, this.cardSize, this.cardSize);
+                    
+                    // Content
+                    if (card.flipped || card.matched) {
+                        ctx.font = `${this.cardSize * 0.5}px Arial`;
+                        ctx.fillText(card.emoji, x + this.cardSize / 2, y + this.cardSize * 0.65);
+                    } else {
+                        ctx.fillStyle = '#fff';
+                        ctx.font = `${this.cardSize * 0.3}px Arial`;
+                        ctx.fillText('?', x + this.cardSize / 2, y + this.cardSize * 0.65);
+                    }
+                });
+                
+                // Stats
+                ctx.fillStyle = '#2e7d32';
+                ctx.font = `bold ${canvas.width * 0.03}px Arial`;
+                ctx.fillText(`Pairs: ${this.matchedPairs}/6 | Moves: ${this.moves} | Time: ${Math.ceil(this.timeLeft)}s`, 
+                    canvas.width / 2, canvas.height * 0.95);
+            }
+            
+            handleClick(x, y) {
+                if (!this.canFlip || this.state !== 'playing') return;
+                
+                const cols = 4;
+                const totalWidth = cols * this.cardSize + (cols - 1) * this.spacing;
+                const startX = (canvas.width - totalWidth) / 2;
+                const startY = canvas.height * 0.15;
+                
+                this.cards.forEach((card, index) => {
+                    if (card.matched || card.flipped) return;
+                    
+                    const col = index % cols;
+                    const row = Math.floor(index / cols);
+                    const cardX = startX + col * (this.cardSize + this.spacing);
+                    const cardY = startY + row * (this.cardSize + this.spacing);
+                    
+                    if (x >= cardX && x <= cardX + this.cardSize &&
+                        y >= cardY && y <= cardY + this.cardSize) {
+                        
+                        card.flipped = true;
+                        this.flippedCards.push(card);
+                        playSound(600);
+                        
+                        if (this.flippedCards.length === 2) {
+                            this.canFlip = false;
+                            this.moves++;
+                            
+                            setTimeout(() => {
+                                if (this.flippedCards[0].emoji === this.flippedCards[1].emoji) {
+                                    this.flippedCards[0].matched = true;
+                                    this.flippedCards[1].matched = true;
+                                    this.matchedPairs++;
+                                    gameState.score += 20;
+                                    playSound(1000);
+                                    createExplosion(cardX + this.cardSize / 2, cardY + this.cardSize / 2, '#4caf50');
+                                    updateUI();
+                                    
+                                    if (this.matchedPairs === 6) {
+                                        this.state = 'complete';
+                                        gameState.stars++;
+                                    }
+                                } else {
+                                    this.flippedCards[0].flipped = false;
+                                    this.flippedCards[1].flipped = false;
+                                    playSound(300);
+                                }
+                                
+                                this.flippedCards = [];
+                                this.canFlip = true;
+                            }, 800);
+                        }
+                    }
+                });
+            }
+            
+            isComplete() {
+                return this.state === 'complete';
+            }
+            
+            getCompletionMessage() {
+                if (this.matchedPairs === 6) {
+                    return { text: 'Perfect Memory! 🧠✨', color: '#4CAF50' };
+                } else {
+                    return { text: 'Time\'s Up! Try Again! 💪', color: '#FF9800' };
+                }
+            }
+        }
+        
+        // ==================== MINI-GAME 3: CATCH THE STARS ====================
+        class CatchStarsGame {
+            constructor() {
+                this.basket = { x: canvas.width / 2, y: canvas.height - 80, width: 100, height: 60, speed: 8 };
+                this.stars = [];
+                this.obstacles = [];
+                this.score = 0;
+                this.lives = 3;
+                this.state = 'playing';
+                this.spawnTimer = 0;
+                this.gameTime = 0;
+                this.lastTime = Date.now();
+                this.keys = {};
+                this.touchX = null;
+                this.resize();
+            }
+            
+            resize() {
+                this.basket.width = canvas.width * 0.12;
+                this.basket.height = canvas.height * 0.08;
+                this.basket.y = canvas.height - this.basket.height - 20;
+            }
+            
+            update() {
+                if (this.state !== 'playing') return;
+                
+                const now = Date.now();
+                const delta = (now - this.lastTime) / 1000;
+                this.lastTime = now;
+                
+                this.gameTime += delta;
+                this.spawnTimer += delta;
+                
+                // Move basket with keyboard
+                if (this.keys['ArrowLeft'] || this.keys['a']) {
+                    this.basket.x -= this.basket.speed;
+                }
+                if (this.keys['ArrowRight'] || this.keys['d']) {
+                    this.basket.x += this.basket.speed;
+                }
+                
+                // Move basket with touch
+                if (this.touchX !== null) {
+                    const targetX = this.touchX - this.basket.width / 2;
+                    const diff = targetX - this.basket.x;
+                    this.basket.x += diff * 0.15;
+                }
+                
+                this.basket.x = Math.max(0, Math.min(canvas.width - this.basket.width, this.basket.x));
+                
+                // Spawn items
+                if (this.spawnTimer > 0.8) {
+                    this.spawnTimer = 0;
+                    
+                    if (Math.random() < 0.7) {
+                        this.stars.push({
+                            x: Math.random() * (canvas.width - 40),
+                            y: -40,
+                            speed: 3 + Math.random() * 2,
+                            size: 30
+                        });
+                    } else {
+                        this.obstacles.push({
+                            x: Math.random() * (canvas.width - 40),
+                            y: -40,
+                            speed: 2 + Math.random() * 2,
+                            size: 35
+                        });
+                    }
+                }
+                
+                // Update stars
+                this.stars.forEach((star, index) => {
+                    star.y += star.speed;
+                    
+                    // Check catch
+                    if (star.x > this.basket.x - star.size / 2 &&
+                        star.x < this.basket.x + this.basket.width + star.size / 2 &&
+                        star.y > this.basket.y - star.size / 2 &&
+                        star.y < this.basket.y + this.basket.height) {
+                        
+                        this.score++;
+                        gameState.score += 15;
+                        playSound(900);
+                        createExplosion(star.x, star.y, '#ffd700');
+                        updateUI();
+                        this.stars.splice(index, 1);
+                        
+                        if (this.score >= 15) {
+                            this.state = 'complete';
+                            gameState.stars++;
+                        }
+                    }
+                    
+                    // Remove if off screen
+                    if (star.y > canvas.height) {
+                        this.stars.splice(index, 1);
+                    }
+                });
+                
+                // Update obstacles
+                this.obstacles.forEach((obs, index) => {
+                    obs.y += obs.speed;
+                    
+                    // Check collision
+                    if (obs.x > this.basket.x - obs.size / 2 &&
+                        obs.x < this.basket.x + this.basket.width + obs.size / 2 &&
+                        obs.y > this.basket.y - obs.size / 2 &&
+                        obs.y < this.basket.y + this.basket.height) {
+                        
+                        this.lives--;
+                        playSound(200);
+                        createExplosion(obs.x, obs.y, '#ff4444', 15);
+                        this.obstacles.splice(index, 1);
+                        
+                        if (this.lives <= 0) {
+                            this.state = 'complete';
+                        }
+                    }
+                    
+                    // Remove if off screen
+                    if (obs.y > canvas.height) {
+                        this.obstacles.splice(index, 1);
+                    }
+                });
+            }
+            
+            draw() {
+                // Sky background
+                const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+                gradient.addColorStop(0, '#87CEEB');
+                gradient.addColorStop(1, '#E0F6FF');
+                ctx.fillStyle = gradient;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                // Title
+                ctx.fillStyle = '#333';
+                ctx.font = `bold ${canvas.width * 0.04}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.fillText('Catch the Stars! ⭐', canvas.width / 2, 40);
+                
+                // Stars
+                this.stars.forEach(star => {
+                    ctx.font = `${star.size}px Arial`;
+                    ctx.fillText('⭐', star.x, star.y);
+                });
+                
+                // Obstacles
+                this.obstacles.forEach(obs => {
+                    ctx.font = `${obs.size}px Arial`;
+                    ctx.fillText('💣', obs.x, obs.y);
+                });
+                
+                // Basket
+                ctx.fillStyle = '#8B4513';
+                ctx.fillRect(this.basket.x, this.basket.y, this.basket.width, this.basket.height);
+                ctx.strokeStyle = '#654321';
+                ctx.lineWidth = 3;
+                ctx.strokeRect(this.basket.x, this.basket.y, this.basket.width, this.basket.height);
+                
+                // Basket handle
+                ctx.beginPath();
+                ctx.arc(this.basket.x + this.basket.width / 2, this.basket.y - 5, 
+                    this.basket.width / 2.5, Math.PI, 0, false);
+                ctx.lineWidth = 4;
+                ctx.stroke();
+                
+                // Lives
+                ctx.fillStyle = '#ff4444';
+                ctx.font = `bold ${canvas.width * 0.03}px Arial`;
+                ctx.textAlign = 'left';
+                let heartsText = '';
+                for (let i = 0; i < this.lives; i++) {
+                    heartsText += '❤️ ';
+                }
+                ctx.fillText(heartsText, 20, canvas.height - 20);
+                
+                // Score
+                ctx.textAlign = 'right';
+                ctx.fillStyle = '#333';
+                ctx.fillText(`Stars: ${this.score}/15`, canvas.width - 20, canvas.height - 20);
+            }
+            
+            handleClick(x, y) {
+                // Not used in this game
+            }
+            
+            handleKeyDown(key) {
+                this.keys[key] = true;
+            }
+            
+            handleKeyUp(key) {
+                this.keys[key] = false;
+            }
+            
+            handleTouch(x, y) {
+                this.touchX = x;
+            }
+            
+            handleTouchEnd() {
+                this.touchX = null;
+            }
+            
+            isComplete() {
+                return this.state === 'complete';
+            }
+            
+            getCompletionMessage() {
+                if (this.score >= 15) {
+                    return { text: 'Star Catcher! 🌟✨', color: '#FFD700' };
+                } else {
+                    return { text: 'Good Effort! 💪', color: '#FF9800' };
+                }
+            }
+        }
+        
+        // ==================== GAME MANAGER ====================
+        const miniGames = [ColorMatchGame, MemoryMatchGame, CatchStarsGame];
+        
+        function startNextMiniGame() {
+            const GameClass = miniGames[gameState.currentMiniGame % miniGames.length];
+            currentGame = new GameClass();
+            gameState.currentMiniGame++;
+            showingTransition = false;
+        }
+        
+        function showTransition(message, color) {
+            showingTransition = true;
+            transitionAlpha = 0;
+            transitionMessage = message;
+            transitionColor = color;
+            
+            const fadeIn = setInterval(() => {
+                transitionAlpha += 0.05;
+                if (transitionAlpha >= 1) {
+                    clearInterval(fadeIn);
+                    setTimeout(() => {
+                        const fadeOut = setInterval(() => {
+                            transitionAlpha -= 0.05;
+                            if (transitionAlpha <= 0) {
+                                clearInterval(fadeOut);
+                                startNextMiniGame();
+                            }
+                        }, 50);
+                    }, 1500);
+                }
+            }, 50);
+        }
+        
+        // ==================== GAME LOOP ====================
+        function gameLoop() {
+            // Clear canvas
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            if (showingTransition) {
+                // Draw transition
+                ctx.save();
+                ctx.globalAlpha = transitionAlpha;
+                ctx.fillStyle = transitionColor || '#4CAF50';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                ctx.fillStyle = '#fff';
+                ctx.font = `bold ${canvas.width * 0.08}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.fillText(transitionMessage, canvas.width / 2, canvas.height / 2);
+                ctx.restore();
+            } else if (currentGame) {
+                currentGame.update();
+                currentGame.draw();
+                
+                if (currentGame.isComplete()) {
+                    const completion = currentGame.getCompletionMessage();
+                    updateUI();
+                    showTransition(completion.text, completion.color);
+                }
+            }
+            
+            // Update and draw particles
+            updateParticles();
+            
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // ==================== INPUT HANDLING ====================
+        function getCanvasCoordinates(clientX, clientY) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            
+            return {
+                x: (clientX - rect.left) * scaleX,
+                y: (clientY - rect.top) * scaleY
+            };
+        }
+        
+        canvas.addEventListener('click', (e) => {
+            const coords = getCanvasCoordinates(e.clientX, e.clientY);
+            if (currentGame && currentGame.handleClick) {
+                currentGame.handleClick(coords.x, coords.y);
+            }
+        });
+        
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const coords = getCanvasCoordinates(touch.clientX, touch.clientY);
+            
+            if (currentGame && currentGame.handleClick) {
+                currentGame.handleClick(coords.x, coords.y);
+            }
+            if (currentGame && currentGame.handleTouch) {
+                currentGame.handleTouch(coords.x, coords.y);
+            }
+        });
+        
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const coords = getCanvasCoordinates(touch.clientX, touch.clientY);
+            
+            if (currentGame && currentGame.handleTouch) {
+                currentGame.handleTouch(coords.x, coords.y);
+            }
+        });
+        
+        canvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            if (currentGame && currentGame.handleTouchEnd) {
+                currentGame.handleTouchEnd();
+            }
+        });
+        
+        document.addEventListener('keydown', (e) => {
+            if (currentGame && currentGame.handleKeyDown) {
+                currentGame.handleKeyDown(e.key);
+            }
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            if (currentGame && currentGame.handleKeyUp) {
+                currentGame.handleKeyUp(e.key);
+            }
+        });
+        
+        // ==================== LOADING SCREEN ====================
+        function startLoading() {
+            let progress = 0;
+            const loadingFill = document.getElementById('loadingFill');
+            
+            const loadInterval = setInterval(() => {
+                progress += Math.random() * 15;
+                if (progress >= 100) {
+                    progress = 100;
+                    loadingFill.style.width = '100%';
+                    clearInterval(loadInterval);
+                    
+                    setTimeout(() => {
+                        document.getElementById('loadingScreen').style.display = 'none';
+                        initAudio();
+                        startNextMiniGame();
+                        gameLoop();
+                    }, 500);
+                } else {
+                    loadingFill.style.width = progress + '%';
+                }
+            }, 200);
+        }
+        
+        // ==================== START GAME ====================
+        updateUI();
+        startLoading();
+    </script>
+</body>
+</html>
